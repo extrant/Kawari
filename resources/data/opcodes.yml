@@ -732,6 +732,7 @@ ServerZoneIpcType:
   opcode: 787
   size: 24
 - name: SharedFATEInformation
+  comment: ""
   opcode: 159
   size: 16
 ClientZoneIpcType:
@@ -741,11 +742,11 @@ ClientZoneIpcType:
   size: 120
 - name: FinishLoading
   comment: Sent by the client when they're done loading and they need to be spawned in.
-  opcode: 780
+  opcode: 358
   size: 72
 - name: ClientTrigger
   comment: Sent for a variety of actions from the client, e.g. sheathing a weapon.
-  opcode: 658
+  opcode: 800
   size: 32
 - name: SocialListRequest
   comment: Sent by the client when it requests the friends list and other related info.
@@ -753,19 +754,19 @@ ClientZoneIpcType:
   size: 16
 - name: UpdatePositionHandler
   comment: Contains the client's new position after the player moves their character.
-  opcode: 124
+  opcode: 663
   size: 24
 - name: LogOut
   comment: Sent by the client when the user requests to log out.
-  opcode: 337
+  opcode: 602
   size: 8
 - name: Disconnected
   comment: Sent by the client when it's actually disconnecting.
-  opcode: 227
+  opcode: 766
   size: 8
 - name: SendChatMessage
   comment: Sent by the client when they send a chat message.
-  opcode: 9999
+  opcode: 9997
   size: 1056
 - name: GMCommand
   comment: Sent by the client when they send a GM command. This can only be sent by the client if they are sent a GM rank.
@@ -777,7 +778,7 @@ ClientZoneIpcType:
   size: 24
 - name: ActionRequest
   comment: Sent by the client when a character performs an action.
-  opcode: 767
+  opcode: 251
   size: 32
 - name: PingSync
   comment: Occasionally sent by the client, purpose is unknown.
@@ -801,7 +802,7 @@ ClientZoneIpcType:
   size: 16
 - name: EventReturnHandler8
   comment: Unknown purpose.
-  opcode: 526
+  opcode: 457
   size: 40
 - name: Config
   comment: Unknown purpose.
@@ -813,11 +814,11 @@ ClientZoneIpcType:
   size: 16
 - name: EventYieldHandler4
   comment: Unknown purpose.
-  opcode: 835
+  opcode: 488
   size: 24
 - name: EventYieldHandler16
   comment: Unknown purpose.
-  opcode: 648
+  opcode: 222
   size: 72
 - name: EventYieldHandler128
   comment: Unknown purpose.
@@ -853,7 +854,7 @@ ClientZoneIpcType:
   size: 24
 - name: NewDiscovery
   comment: Sent by the client when they discover a new location on the map.
-  opcode: 276
+  opcode: 114
   size: 16
 - name: GMCommandName
   comment: Sent by the client when they send a GM command. This can only be sent by the client if they are sent a GM rank.
@@ -869,19 +870,19 @@ ClientZoneIpcType:
   size: 8
 - name: RequestFellowships
   comment: Seems to happen when opening the Fellowships window.
-  opcode: 340
+  opcode: 857
   size: 8
 - name: RequestCrossworldLinkshells
   comment: Seems to happen when opening the Cross-world Linkshells window. This requests the extended version of the list, CrossworldLinkshellsEx.
-  opcode: 938
+  opcode: 678
   size: 8
 - name: SearchFellowships
   comment: Seems to happen when opening the Fellowship Finder.
-  opcode: 128
+  opcode: 9999
   size: 112
 - name: StartCountdown
   comment: Happens when starting a countdown through the Countdown window.
-  opcode: 218
+  opcode: 847
   size: 40
 - name: RequestPlaytime
   comment: Happens when the client requests the playtime using the /playtime command.
@@ -893,7 +894,7 @@ ClientZoneIpcType:
   size: 200
 - name: SetClientLanguage
   comment: Happens during initialization, informs the server what the client's language is set to.
-  opcode: 607
+  opcode: 128
   size: 8
 - name: RequestCharaInfoFromContentIds
   comment: Happens when the client requests more information about other characters, and only has their content id.
@@ -901,7 +902,7 @@ ClientZoneIpcType:
   size: 80
 - name: PartyLeave
   comment: Happens when the client leaves their party.
-  opcode: 9997
+  opcode: 9998
   size: 8
 - name: PartyDisband
   comment: Happens when the client disbands their party.
@@ -925,11 +926,11 @@ ClientZoneIpcType:
   size: 48
 - name: PartyChangeLeader
   comment: Sent by the client to relinquish leadership to another player in their party.
-  opcode: 301
+  opcode: 466
   size: 48
 - name: RequestSearchInfo
   comment: Happens when the client requests search info for any player.
-  opcode: 9998
+  opcode: 974
   size: 24
 - name: RequestAdventurerPlate
   comment: Happens when the client requests the adventurer plate for any player.
@@ -941,7 +942,7 @@ ClientZoneIpcType:
   size: 176
 - name: EditSearchInfo
   comment: Happens when the client wants to update the search info of the player.
-  opcode: 695
+  opcode: 650
   size: 216
 - name: RequestOwnSearchInfo
   comment: Seems to happen when the client wants to know its own search info.
@@ -953,7 +954,7 @@ ClientZoneIpcType:
   size: 24
 - name: EnterTerritoryEvent
   comment: Sent by the client when requesting to play an event (because we entered a territory.)
-  opcode: 995
+  opcode: 596
   size: 8
 - name: Trade
   comment: Sent by the client while trading.
@@ -977,7 +978,7 @@ ClientZoneIpcType:
   size: 8
 - name: ApplyFieldMarkerPreset
   comment: The client wants to apply a waymarker preset for their party.
-  opcode: 719
+  opcode: 662
   size: 104
 - name: RequestFreeCompanyShortMessage
   comment: The client requests a character's short message in their free company.
@@ -989,7 +990,7 @@ ClientZoneIpcType:
   size: 24
 - name: InitiateReadyCheck
   comment: The client initiates a ready check for their party.
-  opcode: 133
+  opcode: 702
   size: 8
 - name: ReadyCheckResponse
   comment: The client responds to an ongoing ready check from their party.
@@ -1005,7 +1006,7 @@ ClientZoneIpcType:
   size: 16
 - name: CreateLocalLinkshellRequest
   comment: The client requests the creation of a local linkshell.
-  opcode: 913
+  opcode: 482
   size: 40
 - name: CrossworldLinkshellMemberListRequest
   comment: The client requests the member list for this cross-world linkshell.
@@ -1021,11 +1022,11 @@ ClientZoneIpcType:
   size: 56
 - name: CrossRealmListingsRequest2
   comment: Seen while opening the Party Finder.
-  opcode: 246
+  opcode: 619
   size: 40
 - name: ViewCrossRealmListing
   comment: Seen while viewing information for a specific Party Finder listing.
-  opcode: 253
+  opcode: 669
   size: 16
 - name: CheckCWLinkshellNameAvailability
   comment: The client requests if this name is available for use with a new cross-world linkshell.
@@ -1089,15 +1090,15 @@ ClientZoneIpcType:
   size: 8
 - name: TakeLetterAttachments
   comment: The client requests that any attachments in this letter be given to them.
-  opcode: 464
+  opcode: 265
   size: 64
 - name: Dive
   comment: The client dives underwater.
-  opcode: 448
+  opcode: 655
   size: 32
 - name: WorldInteraction
   comment: The client interacts with the world in some way.
-  opcode: 298
+  opcode: 599
   size: 32
 - name: PlaceFurniture
   comment: The client places furniture on their property (indoors or outdoors), or into the relevant storeroom (the furniture is not spawned in that case).
@@ -1179,11 +1180,11 @@ ServerChatIpcType:
   opcode: 112
   size: 56
 - name: JoinChannelResult
-  comment: 'Presumably sent by the server in response to the client joining a chat channel: fc. linkshell, etc. Doesn''t seem to be needed for party chat.'
+  comment: "Presumably sent by the server in response to the client joining a chat channel: fc. linkshell, etc. Doesn't seem to be needed for party chat."
   opcode: 200
   size: 32
 - name: FreeCompanyEvent
-  comment: 'Sent by the server in response to a free company-related event taking place: member logging in, logging out, etc.'
+  comment: "Sent by the server in response to a free company-related event taking place: member logging in, logging out, etc."
   opcode: 300
   size: 104
 - name: GetChannelListResponse
