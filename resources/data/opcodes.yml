@@ -765,7 +765,7 @@ ClientZoneIpcType:
   size: 8
 - name: SendChatMessage
   comment: Sent by the client when they send a chat message.
-  opcode: 296
+  opcode: 9999
   size: 1056
 - name: GMCommand
   comment: Sent by the client when they send a GM command. This can only be sent by the client if they are sent a GM rank.
@@ -901,7 +901,7 @@ ClientZoneIpcType:
   size: 80
 - name: PartyLeave
   comment: Happens when the client leaves their party.
-  opcode: 323
+  opcode: 9997
   size: 8
 - name: PartyDisband
   comment: Happens when the client disbands their party.
@@ -929,7 +929,7 @@ ClientZoneIpcType:
   size: 48
 - name: RequestSearchInfo
   comment: Happens when the client requests search info for any player.
-  opcode: 167
+  opcode: 9998
   size: 24
 - name: RequestAdventurerPlate
   comment: Happens when the client requests the adventurer plate for any player.
