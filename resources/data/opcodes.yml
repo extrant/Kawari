@@ -766,7 +766,7 @@ ClientZoneIpcType:
   size: 8
 - name: SendChatMessage
   comment: Sent by the client when they send a chat message.
-  opcode: 296
+  opcode: 9993
   size: 1056
 - name: GMCommand
   comment: Sent by the client when they send a GM command. This can only be sent by the client if they are sent a GM rank.
@@ -878,7 +878,7 @@ ClientZoneIpcType:
   size: 8
 - name: SearchFellowships
   comment: Seems to happen when opening the Fellowship Finder.
-  opcode: 128
+  opcode: 9998
   size: 112
 - name: StartCountdown
   comment: Happens when starting a countdown through the Countdown window.
@@ -902,7 +902,7 @@ ClientZoneIpcType:
   size: 80
 - name: PartyLeave
   comment: Happens when the client leaves their party.
-  opcode: 323
+  opcode: 9991
   size: 8
 - name: PartyDisband
   comment: Happens when the client disbands their party.
