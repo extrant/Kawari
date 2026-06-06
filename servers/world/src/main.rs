@@ -28,10 +28,12 @@ use kawari::ipc::zone::{
     ServerZoneIpcData, ServerZoneIpcSegment,
 };
 
-use kawari::common::{CharacterMode, NETWORK_TIMEOUT, RECEIVE_BUFFER_SIZE};
+use kawari::common::{CharacterMode, NETWORK_TIMEOUT};
 use kawari::constants::{AETHER_CURRENT_COMP_FLG_SET_BITMASK_SIZE, CLASSJOB_ARRAY_SIZE};
 use kawari::packet::oodle::OodleNetwork;
-use kawari::packet::{ConnectionState, ConnectionType, SegmentData, parse_packet_header};
+use kawari::packet::{
+    ConnectionState, ConnectionType, SegmentData, parse_packet_header, read_packet,
+};
 use kawari_world::lua::{KawariLua, KawariLuaState, LuaPlayer};
 use kawari_world::{
     ChatConnection, CustomIpcConnection, Event, EventHandler, GameData, ObsfucationData, Roulette,
@@ -44,7 +46,6 @@ use kawari_world::{
 
 use mlua::Function;
 use parking_lot::Mutex;
-use tokio::io::AsyncReadExt;
 use tokio::join;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Receiver, UnboundedReceiver, UnboundedSender, channel, unbounded_channel};
@@ -111,11 +112,9 @@ async fn initial_setup(
     game_data: Arc<Mutex<GameData>>,
     handle: ServerHandle,
 ) {
-    let mut buf = vec![0; RECEIVE_BUFFER_SIZE];
-
-    match socket.read(&mut buf).await {
-        Ok(n) => {
-            let header = parse_packet_header(&buf[..n]);
+    match read_packet(&mut socket).await {
+        Ok(buf) => {
+            let header = parse_packet_header(&buf);
             if header.connection_type == ConnectionType::KawariIpc {
                 let mut connection = CustomIpcConnection {
                     socket,
@@ -124,7 +123,7 @@ async fn initial_setup(
                     gamedata: game_data.clone(),
                 };
                 // Handle the first batch of segments before handing off control to the loop proper.
-                let segments = connection.parse_packet(&buf[..n]);
+                let segments = connection.parse_packet(&buf);
                 for segment in segments {
                     match &segment.data {
                         SegmentData::KawariIpc(data) => connection.handle_custom_ipc(data).await,
@@ -185,7 +184,7 @@ async fn initial_setup(
                 };
 
                 // Handle setup before passing off control to the zone connection.
-                let segments = connection.parse_packet(&buf[..n]);
+                let segments = connection.parse_packet(&buf);
                 let mut zone_ready = false;
 
                 for segment in segments {
@@ -246,7 +245,7 @@ async fn initial_setup(
                 };
 
                 // Handle setup before passing off control to the chat connection.
-                let segments = connection.parse_packet(&buf[..n]);
+                let segments = connection.parse_packet(&buf);
                 let mut chat_ready = false;
 
                 for segment in segments {
@@ -365,58 +364,48 @@ async fn client_chat_loop(
         .send(ToServer::NewChatClient(client_handle.clone()))
         .await;
 
-    let mut buf = vec![0; RECEIVE_BUFFER_SIZE];
     loop {
         tokio::select! {
             biased; // client data should always be prioritized
 
-            n = connection.socket.read(&mut buf) => {
-                match n {
-                    Ok(n) => {
-                        // if the last response was over >5 seconds, the client is probably gone
-                        if n == 0 {
-                            let now = Instant::now();
-                            if now.duration_since(connection.last_keep_alive) > NETWORK_TIMEOUT {
-                                tracing::info!("ChatConnection {:#?} was killed because of timeout", client_handle.id);
-                                break;
-                            }
-                        } else {
-                            connection.last_keep_alive = Instant::now();
-                            let segments = connection.parse_packet(&buf);
-                            for segment in segments {
-                                match &segment.data {
-                                    SegmentData::None() => {}
-                                    SegmentData::Setup { .. } => {
-                                        // Handled before our connection was spawned!
-                                    }
-                                    SegmentData::Ipc(data) => {
-                                        match &data.data {
-                                            ClientChatIpcData::SendTellMessage(tell_data) => {
-                                                connection.send_tell_message(tell_data).await;
-                                            }
-                                            ClientChatIpcData::SendPartyMessage(data) => {
-                                                connection.send_party_message(data).await;
-                                            }
-                                            ClientChatIpcData::GetChannelList { unk } => {
-                                                tracing::info!("GetChannelList: {:#?} from {}", unk, connection.player_data.actor_id);
-                                            }
-                                            ClientChatIpcData::SendCWLinkshellMessage(data) => {
-                                                connection.send_linkshell_message(data).await;
-                                            }
-                                            ClientChatIpcData::SendAllianceMessage(_data) => {
-                                                tracing::info!("Chatting in alliances is unimplemented");
-                                            }
-                                            ClientChatIpcData::Unknown { unk } => {
-                                                tracing::warn!("Unknown Chat packet {:?} recieved ({} bytes), this should be handled!", data.header.op_code, unk.len());
-                                            }
+            packet = read_packet(&mut connection.socket) => {
+                match packet {
+                    Ok(buf) => {
+                        connection.last_keep_alive = Instant::now();
+                        let segments = connection.parse_packet(&buf);
+                        for segment in segments {
+                            match &segment.data {
+                                SegmentData::None() => {}
+                                SegmentData::Setup { .. } => {
+                                    // Handled before our connection was spawned!
+                                }
+                                SegmentData::Ipc(data) => {
+                                    match &data.data {
+                                        ClientChatIpcData::SendTellMessage(tell_data) => {
+                                            connection.send_tell_message(tell_data).await;
+                                        }
+                                        ClientChatIpcData::SendPartyMessage(data) => {
+                                            connection.send_party_message(data).await;
+                                        }
+                                        ClientChatIpcData::GetChannelList { unk } => {
+                                            tracing::info!("GetChannelList: {:#?} from {}", unk, connection.player_data.actor_id);
+                                        }
+                                        ClientChatIpcData::SendCWLinkshellMessage(data) => {
+                                            connection.send_linkshell_message(data).await;
+                                        }
+                                        ClientChatIpcData::SendAllianceMessage(_data) => {
+                                            tracing::info!("Chatting in alliances is unimplemented");
+                                        }
+                                        ClientChatIpcData::Unknown { unk } => {
+                                            tracing::warn!("Unknown Chat packet {:?} recieved ({} bytes), this should be handled!", data.header.op_code, unk.len());
                                         }
                                     }
-                                    SegmentData::KeepAliveRequest { id, timestamp } => connection.send_keep_alive(*id, *timestamp).await,
-                                    SegmentData::KeepAliveResponse { .. } => {
-                                        // these should be safe to ignore
-                                    }
-                                    _ => panic!("ChatConnection: The server is receiving a response or an unknown packet: {segment:#?}"),
                                 }
+                                SegmentData::KeepAliveRequest { id, timestamp } => connection.send_keep_alive(*id, *timestamp).await,
+                                SegmentData::KeepAliveResponse { .. } => {
+                                    // these should be safe to ignore
+                                }
+                                _ => panic!("ChatConnection: The server is receiving a response or an unknown packet: {segment:#?}"),
                             }
                         }
                     }
@@ -521,13 +510,11 @@ async fn process_packet(
     lua_player: &mut LuaPlayer,
     events: &mut Vec<(Box<dyn EventHandler>, Event)>,
     client_handle: ClientHandle,
-    n: usize,
     buf: &[u8],
 ) -> bool {
     let config = get_config();
 
-    // if the last response was over >5 seconds, the client is probably gone
-    if n == 0 {
+    if buf.is_empty() {
         let now = Instant::now();
         if now.duration_since(connection.last_keep_alive) > NETWORK_TIMEOUT {
             tracing::info!(
@@ -539,7 +526,7 @@ async fn process_packet(
     } else {
         connection.last_keep_alive = Instant::now();
 
-        let segments = connection.parse_packet(&buf[..n]);
+        let segments = connection.parse_packet(buf);
         for segment in &segments {
             match &segment.data {
                 SegmentData::None() => {}
@@ -1914,7 +1901,11 @@ async fn process_packet(
 
                                 // Fallback to Rust implemented commands in ZoneConnection, but if this fails then
                                 if connection
-                                    .process_debug_commands(&chat_message.message, events)
+                                    .process_debug_commands(
+                                        &chat_message.message,
+                                        events,
+                                        lua_player,
+                                    )
                                     .await
                                 {
                                     continue; // Don't send the message off anywhere
@@ -4140,7 +4131,6 @@ async fn client_loop(
 ) {
     let mut lua_player = LuaPlayer::default();
 
-    let mut buf = vec![0; RECEIVE_BUFFER_SIZE];
     let mut client_handle = client_handle.clone();
     client_handle.actor_id = connection.player_data.character.actor_id;
 
@@ -4161,10 +4151,10 @@ async fn client_loop(
     loop {
         tokio::select! {
             biased; // client data should always be prioritized
-            n = connection.socket.read(&mut buf) => {
-                match n {
-                    Ok(n) => {
-                        if !process_packet(&mut connection, &mut lua_player, &mut events, client_handle.clone(), n, &buf).await {
+            packet = read_packet(&mut connection.socket) => {
+                match packet {
+                    Ok(buf) => {
+                        if !process_packet(&mut connection, &mut lua_player, &mut events, client_handle.clone(), &buf).await {
                             break;
                         }
                     },

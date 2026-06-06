@@ -23,7 +23,7 @@ pub mod oodle;
 #[cfg(feature = "server")]
 mod send_helpers;
 #[cfg(feature = "server")]
-pub use send_helpers::{send_custom_world_packet, send_keep_alive, send_packet};
+pub use send_helpers::{read_packet, send_custom_world_packet, send_keep_alive, send_packet};
 
 mod scrambler;
 pub use scrambler::{ScramblerKeyGenerator, ScramblerKeys, scramble_packet};

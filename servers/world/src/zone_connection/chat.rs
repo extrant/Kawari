@@ -14,11 +14,13 @@ use crate::{
 use kawari::{
     common::{
         DirectorEvent, ERR_INVENTORY_ADD_FAILED, FateState, HandlerId, HandlerType, ObjectTypeId,
+        ObjectTypeKind,
     },
     config::FilesystemConfig,
     ipc::zone::{
-        ActorControlCategory, ChatMessage, Condition, Conditions, GameMasterRank,
-        ServerNoticeFlags, ServerNoticeMessage, ServerZoneIpcData, ServerZoneIpcSegment,
+        ActorControlCategory, ChatMessage, Condition, Conditions, EventType, GameMasterRank,
+        SceneFlags, ServerNoticeFlags, ServerNoticeMessage, ServerZoneIpcData,
+        ServerZoneIpcSegment,
     },
 };
 
@@ -128,6 +130,7 @@ impl ZoneConnection {
         &mut self,
         chat_message: &BString, // TODO: Replace this with an SEString
         events: &mut Vec<(Box<dyn EventHandler>, Event)>,
+        lua_player: &mut LuaPlayer,
     ) -> bool {
         if self.player_data.character.gm_rank == GameMasterRank::NormalUser {
             tracing::info!("Rejecting debug command because the user is not GM!");
@@ -208,6 +211,77 @@ impl ZoneConnection {
             "!finishevent" => {
                 self.event_finish(events).await;
                 self.send_notice("Current event forcefully finished.").await;
+                true
+            }
+            "!dcutscene" => {
+                let Some((_, cutscene_id)) = chat_message.split_once(' ') else {
+                    self.send_notice("[dcutscene] Usage: !dcutscene <cutscene id>")
+                        .await;
+                    return true;
+                };
+
+                let Ok(cutscene_id) = cutscene_id.parse::<u32>() else {
+                    self.send_notice("[dcutscene] Cutscene id must be an integer.")
+                        .await;
+                    return true;
+                };
+
+                if self.content_handler_id.0 == 0 {
+                    self.send_notice("[dcutscene] You are not in content with an active director.")
+                        .await;
+                    return true;
+                }
+
+                if self
+                    .start_event(
+                        ObjectTypeId {
+                            object_id: self.player_data.character.actor_id,
+                            object_type: ObjectTypeKind::None,
+                        },
+                        self.content_handler_id.0,
+                        EventType::GameProgress,
+                        1,
+                        events,
+                        lua_player,
+                    )
+                    .await
+                {
+                    lua_player.play_scene(
+                        3,
+                        SceneFlags::NO_DEFAULT_CAMERA
+                            | SceneFlags::FADE_OUT
+                            | SceneFlags::CONDITION_CUTSCENE
+                            | SceneFlags::HIDE_HOTBAR
+                            | SceneFlags::UNK1
+                            | SceneFlags::DISABLE_STEALTH
+                            | SceneFlags::INVIS_AOE,
+                        vec![cutscene_id, 1, 38, 1, 0],
+                    );
+                    self.send_notice(&format!("[dcutscene] Playing cutscene {cutscene_id}."))
+                        .await;
+                }
+
+                true
+            }
+            "!completeduty" => {
+                if self.content_handler_id.0 == 0 {
+                    self.send_notice(
+                        "[completeduty] You are not in content with an active director.",
+                    )
+                    .await;
+                    return true;
+                }
+
+                self.actor_control_self(ActorControlCategory::DirectorEvent {
+                    handler_id: self.content_handler_id,
+                    event: DirectorEvent::DutyCompleted,
+                    arg1: 0,
+                    arg2: 0,
+                })
+                .await;
+                self.send_notice("[completeduty] Sent DutyCompleted director event.")
+                    .await;
+
                 true
             }
             "!condition" => {

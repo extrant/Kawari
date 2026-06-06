@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{Cursor, Error, ErrorKind};
 
 use binrw::BinWrite;
 use tokio::{
@@ -6,14 +6,12 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{
-    common::RECEIVE_BUFFER_SIZE, common::timestamp_msecs, config::get_config,
-    ipc::kawari::CustomIpcSegment,
-};
+use crate::{common::timestamp_msecs, config::get_config, ipc::kawari::CustomIpcSegment};
 
 use super::{
     CompressionType, ConnectionState, ConnectionType, PacketHeader, PacketSegment,
     ReadWriteIpcSegment, SegmentData, SegmentType, compression::compress, parse_packet,
+    parse_packet_header,
 };
 
 pub async fn send_packet<T: ReadWriteIpcSegment>(
@@ -45,6 +43,26 @@ pub async fn send_packet<T: ReadWriteIpcSegment>(
     if let Err(e) = socket.write_all(&buffer).await {
         tracing::warn!("Failed to send packet: {e}");
     }
+}
+
+pub async fn read_packet(socket: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+    let header_size = std::mem::size_of::<PacketHeader>();
+    let mut packet_buffer = vec![0; header_size];
+    socket.read_exact(&mut packet_buffer).await?;
+
+    let header = parse_packet_header(&packet_buffer);
+    let packet_size = header.size as usize;
+    if packet_size < header_size {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("invalid packet size {}", header.size),
+        ));
+    }
+
+    packet_buffer.resize(packet_size, 0);
+    socket.read_exact(&mut packet_buffer[header_size..]).await?;
+
+    Ok(packet_buffer)
 }
 
 pub async fn send_keep_alive<T: ReadWriteIpcSegment>(
@@ -95,13 +113,11 @@ pub async fn send_custom_world_packet(segment: CustomIpcSegment) -> Option<Custo
     )
     .await;
 
-    // read response
-    let mut buf = vec![0; RECEIVE_BUFFER_SIZE];
-    let n = stream.read(&mut buf).await.expect("Failed to read data!");
-    if n != 0 {
-        let segments = parse_packet::<CustomIpcSegment>(&buf[..n], &mut packet_state);
+    let packet_buffer = read_packet(&mut stream).await.ok()?;
+    let segments = parse_packet::<CustomIpcSegment>(&packet_buffer, &mut packet_state);
 
-        return match &segments[0].data {
+    if let Some(segment) = segments.first() {
+        return match &segment.data {
             SegmentData::KawariIpc(data) => Some(data.clone()),
             _ => None,
         };
