@@ -1,5 +1,5 @@
 # Kawari
-## 注意：由于我对这个垃圾游戏失去了兴趣，所以暂时不会有功能性更新
+## 注意：由于我对这个垃圾游戏失去了兴趣，所有的维护都已暂停
 
 My own fork of Kawari, warning: vibe code included.   
 If you don\'t like it, just leave, this is not for you.   
@@ -21,7 +21,7 @@ since the owner cringes at the mere mention of `AI`.
 我都不敢打包票自己写的东西100%准确你怎么好意思狗叫AI生成的信息经常有误导性或不准确的？
 
 # Supported game version / 当前支持的游戏版本
-2026.09.01.0000.0000
+2026.10.06.0000.0000
 
 # TODOs / 待办列表
 ## 主要功能
