@@ -21,7 +21,7 @@ since the owner cringes at the mere mention of `AI`.
 我都不敢打包票自己写的东西100%准确你怎么好意思狗叫AI生成的信息经常有误导性或不准确的？
 
 # Supported game version / 当前支持的游戏版本
-2026.10.06.0000.0000
+2026.11.03.0000.0000
 
 # TODOs / 待办列表
 ## 主要功能

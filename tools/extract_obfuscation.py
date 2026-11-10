@@ -24,9 +24,12 @@ the table's byte span in .rdata (distance to the next table) instead of from an
 e.g. `% 72` becomes `lea [r+r*8]; shl ,3` (x72) rather than `imul ,72` -- so the
 imul-only heuristic silently reads the wrong max (119 instead of 72) and would
 dump a wrong-sized table. The span-based method matches Kawari upstream exactly.
+Mid/day/opcode table lengths are read from the remainder calculation, including
+the LEA/SHL multiplication used for `% 96` in the 7.58 client.
 """
 
 import os
+import re
 
 import idaapi
 import idautils
@@ -111,12 +114,58 @@ def _near_target(ea):
     return None
 
 
-def _preceding_imul(insns, k):
-    """Nearest `imul reg, imm` immediate before index k."""
+def _register_family(name):
+    """Normalize 32/64-bit register names used by remainder calculations."""
+    if re.fullmatch(r"r\d+d?", name):
+        return name.removesuffix("d")
+    if re.fullmatch(r"[er](ax|bx|cx|dx|si|di|bp|sp)", name):
+        return name[1:]
+    return name
+
+
+def _product_scale(insns, k, register):
+    """Read an immediate multiplier, including LEA followed by SHL."""
+    scale = 1
     while k > 0:
         k -= 1
-        if idc.print_insn_mnem(insns[k]) == "imul" and _last_imm(insns[k]) is not None:
-            return _last_imm(insns[k])
+        ea = insns[k]
+        mnem = idc.print_insn_mnem(ea)
+        if mnem.startswith("j") or mnem in ("call", "ret", "retn", "mul", "div", "idiv"):
+            return None
+        if (idc.get_operand_type(ea, 0) != idaapi.o_reg
+                or _register_family(idc.print_operand(ea, 0)) != register):
+            continue
+        imm = _last_imm(ea)
+        if mnem == "imul" and imm is not None:
+            return scale * imm
+        if mnem in ("shl", "sal") and imm is not None:
+            scale <<= imm
+            continue
+        if mnem == "lea":
+            # LEA ecx, [rdx+rdx*2] multiplies by 3; SHL ecx, 5 makes 96.
+            operand = idc.print_operand(ea, 1).replace(" ", "")
+            match = re.fullmatch(r"\[([a-z0-9]+)\+\1\*([248])\]", operand)
+            if match:
+                return scale * (1 + int(match[2]))
+        return None
+    return None
+
+
+def _preceding_modulus(insns, k):
+    """Recover the divisor from `value - quotient * divisor` before a lookup.
+
+    Stop at the nearest register subtraction rather than borrowing an unrelated
+    IMUL from an earlier calculation or a different set-block.
+    """
+    while k > 0:
+        k -= 1
+        ea = insns[k]
+        mnem = idc.print_insn_mnem(ea)
+        if mnem.startswith("j") or mnem in ("call", "ret", "retn"):
+            break
+        if (mnem == "sub" and idc.get_operand_type(ea, 0) == idaapi.o_reg
+                and idc.get_operand_type(ea, 1) == idaapi.o_reg):
+            return _product_scale(insns, k, _register_family(idc.print_operand(ea, 1)))
     return None
 
 
@@ -140,7 +189,7 @@ def derive_constants():
     ins = _func_insns(dispatcher.start_ea)
 
     # The first RVA-displacement `mov` in the dispatcher is the opcode-key-table
-    # lookup. Walk backwards for its size (imul imm), the Derive() call, and the
+    # lookup. Walk backwards for its size, the Derive() call, and the
     # two cmp immediates (obfuscation mode + unknown-init opcode).
     for idx, ea in enumerate(ins):
         if idc.print_insn_mnem(ea) != "mov":
@@ -149,12 +198,8 @@ def derive_constants():
         if rva is None:
             continue
         R["OpcodeKeyTableOffset"] = rva
+        R["OpcodeKeyTableSize"] = _preceding_modulus(ins, idx)
         j = idx
-        while j > 0:
-            j -= 1
-            if idc.print_insn_mnem(ins[j]) == "imul" and _last_imm(ins[j]) is not None:
-                R["OpcodeKeyTableSize"] = _last_imm(ins[j])
-                break
         while j > 0:
             j -= 1
             if idc.print_insn_mnem(ins[j]) == "call":
@@ -185,8 +230,8 @@ def derive_constants():
     derive = ida_funcs.get_func(R["Derive"])
     dins = _func_insns(R["Derive"])
 
-    # Mid table (imul [rva]) and day table (add [rva]); each preceded by an
-    # imul imm giving the element count.
+    # Mid table (imul [rva]) and day table (add [rva]); recover the element
+    # count from each lookup's remainder calculation.
     for k, ea in enumerate(dins):
         mnem = idc.print_insn_mnem(ea)
         rva = _disp_rva(ea)
@@ -194,10 +239,10 @@ def derive_constants():
             continue
         if mnem == "imul" and R["MidTableOffset"] is None:
             R["MidTableOffset"] = rva
-            R["MidTableSize"] = _preceding_imul(dins, k)
+            R["MidTableSize"] = _preceding_modulus(dins, k)
         elif mnem == "add" and R["DayTableOffset"] is None:
             R["DayTableOffset"] = rva
-            R["DayTableSize"] = _preceding_imul(dins, k)
+            R["DayTableSize"] = _preceding_modulus(dins, k)
 
     # Each set-block accesses exactly one table; its radix is the imul immediate
     # just before that table access.
@@ -225,6 +270,15 @@ def derive_constants():
                     break
             break
 
+    for key in ("OpcodeKeyTableOffset", "OpcodeKeyTableSize", "MidTableOffset",
+                "MidTableSize", "DayTableOffset", "DayTableSize"):
+        if not isinstance(R[key], int) or R[key] <= 0:
+            raise RuntimeError("failed to derive %s" % key)
+    if any(value <= 0 for value in R["TableOffsets"] + R["TableRadixes"]):
+        raise RuntimeError("failed to derive all three table offsets and radixes")
+    if not isinstance(R["ObfuscationEnabledMode"], int) or not 0 <= R["ObfuscationEnabledMode"] <= 255:
+        raise RuntimeError("failed to derive obfuscation mode")
+
     # `max` from each table's .rdata span (distance to the next known table),
     # divided by the radix. Robust against the lea/shl-encoded modulo.
     all_off = sorted([
@@ -236,10 +290,15 @@ def derive_constants():
         radix = R["TableRadixes"][x]
         if radix in (None, 0):
             raise RuntimeError("radix for table %d not found" % x)
-        nxt = min(o for o in all_off if o > to)
+        nxt = min((o for o in all_off if o > to), default=None)
+        if nxt is None:
+            raise RuntimeError("end of table %d not found" % x)
         elems = (nxt - to) // 4
         R["TableMax"][x] = elems // radix
         R["TableSizes"][x] = radix * R["TableMax"][x]
+        padding = nxt - to - R["TableSizes"][x] * _MUL_TABLE
+        if R["TableMax"][x] <= 0 or not 0 <= padding < 16:
+            raise RuntimeError("unexpected span or alignment for table %d" % x)
 
     return R
 
@@ -248,7 +307,6 @@ def derive_constants():
 # Output
 # --------------------------------------------------------------------------
 def dump_tables(R, out_dir):
-    os.makedirs(out_dir, exist_ok=True)
     specs = [
         ("table0.bin", R["TableOffsets"][0], R["TableSizes"][0] * _MUL_TABLE),
         ("table1.bin", R["TableOffsets"][1], R["TableSizes"][1] * _MUL_TABLE),
@@ -257,10 +315,16 @@ def dump_tables(R, out_dir):
         ("daytable.bin", R["DayTableOffset"], R["DayTableSize"] * _MUL_DAY),
         ("opcodekeytable.bin", R["OpcodeKeyTableOffset"], R["OpcodeKeyTableSize"] * _MUL_OKT),
     ]
+    tables = []
     for name, rva, nbytes in specs:
+        if rva <= 0 or nbytes <= 0:
+            raise RuntimeError("invalid offset or size for %s" % name)
         data = ida_bytes.get_bytes(IMAGE_BASE + rva, nbytes)
         if data is None or len(data) != nbytes:
             raise RuntimeError("failed reading %s (%d bytes @ rva 0x%X)" % (name, nbytes, rva))
+        tables.append((name, rva, nbytes, data))
+    os.makedirs(out_dir, exist_ok=True)
+    for name, rva, nbytes, data in tables:
         with open(os.path.join(out_dir, name), "wb") as f:
             f.write(data)
         print("  wrote %-20s %7d bytes  (rva 0x%X)" % (name, nbytes, rva))
@@ -302,7 +366,7 @@ def update_constants_yaml(path, mode, radixes, table_max):
         f.write("\n".join(out))
 
 
-def main():
+def main(root=KAWARI_ROOT):
     print("=== Kawari obfuscation extractor ===")
     R = derive_constants()
     print("ObfuscationEnabledMode = %d" % R["ObfuscationEnabledMode"])
@@ -314,8 +378,8 @@ def main():
         R["DayTableOffset"], R["DayTableSize"],
         R["OpcodeKeyTableOffset"], R["OpcodeKeyTableSize"]))
 
-    scrambler_dir = os.path.join(KAWARI_ROOT, "resources", "data", "scrambler")
-    constants_yml = os.path.join(KAWARI_ROOT, "resources", "data", "constants.yml")
+    scrambler_dir = os.path.join(root, "resources", "data", "scrambler")
+    constants_yml = os.path.join(root, "resources", "data", "constants.yml")
 
     print("Dumping tables -> %s" % scrambler_dir)
     dump_tables(R, scrambler_dir)
@@ -326,4 +390,5 @@ def main():
     print("Done.")
 
 
-main()
+if __name__ == "__main__":
+    main()
