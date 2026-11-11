@@ -1034,16 +1034,18 @@ pub struct HouseId {
     pub world_id: u16,
 }
 
+/// The default represents "no house", which retail encodes as all bits set (`u64::MAX`).
+/// The client (and plugins such as OmenTools) check for exactly this value, so anything else is treated as an owned house.
 impl Default for HouseId {
     fn default() -> Self {
         Self {
             unit: HouseUnit {
-                apartment_division_plot_index: 127,
-                apartment_flag: false,
+                apartment_division_plot_index: 0x7F,
+                apartment_flag: true,
             },
-            unk1: 255,
-            ward_index: 0,
-            room_number: 0,
+            unk1: 0xFF,
+            ward_index: 0x3F,
+            room_number: 0x3FF,
             territory_type_id: 0xFFFF,
             world_id: 0xFFFF,
         }
@@ -1326,5 +1328,18 @@ mod tests {
             buffer.into_inner(),
             vec![0x81, 0x00, 0x86, 0x0F, 0x54, 0x01, 0x3F, 0x00]
         );
+    }
+
+    #[test]
+    fn test_housing_id_default_is_invalid() {
+        let mut buffer = Cursor::new(Vec::new());
+        HouseId::default().write_le(&mut buffer).unwrap();
+
+        assert_eq!(buffer.into_inner(), vec![0xFF; 8]);
+
+        // Round-trips back to the same value.
+        let mut cursor = Cursor::new(vec![0xFF; 8]);
+        let read: HouseId = binrw::BinReaderExt::read_le(&mut cursor).unwrap();
+        assert_eq!(read, HouseId::default());
     }
 }
