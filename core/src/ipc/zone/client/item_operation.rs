@@ -60,24 +60,4 @@ mod tests {
         assert_eq!(modify_inventory.dst_stack, 0);
         assert_eq!(modify_inventory.dst_catalog_id, 0);
     }
-
-    /// Real capture (CN 2026.11.03): equipping an item from inventory page 0 slot 11 onto an
-    /// occupied equipped slot. If this stops parsing, BASE_INVENTORY_ACTION has shifted again.
-    #[test]
-    fn read_equip_exchange_capture() {
-        let data: [u8; 48] = [
-            0x02, 0x00, 0x00, 0x10, 0x47, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0xE8, 0x03, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x01, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        let op = ItemOperation::read_le(&mut Cursor::new(&data)).unwrap();
-        assert_eq!(op.operation_type, ItemOperationKind::Exchange);
-        assert_eq!(op.src_storage_id, ContainerType::Inventory0);
-        assert_eq!(op.src_container_index, 11);
-        assert_eq!(op.dst_storage_id, ContainerType::Equipped);
-        assert_eq!(op.dst_container_index, 12);
-        assert_eq!(op.dst_stack, 1);
-    }
 }

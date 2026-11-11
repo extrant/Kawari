@@ -4951,14 +4951,10 @@ async fn process_packet(
                             .await;
                     }
                     ClientZoneIpcData::Unknown { unk } => {
-                        // Dump the raw payload too: when a *known* opcode lands here it means its
-                        // struct failed to parse (e.g. a version-shifted enum), and the bytes are
-                        // what's needed to fix it.
                         tracing::warn!(
-                            "Unknown Zone packet {:?} recieved ({} bytes), this should be handled! data: {:02X?}",
+                            "Unknown Zone packet {:?} recieved ({} bytes), this should be handled!",
                             data.header.op_code,
-                            unk.len(),
-                            unk
+                            unk.len()
                         );
                     }
                 }
